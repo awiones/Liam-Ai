@@ -1,15 +1,15 @@
-# Liam AI
-
-## Language Intergraded Adaptive Machine
+# Liam (Language Intergraded Adaptive Machine) AI
 
 <p align="center">
-  <img src="images/logo.png" alt="Liam AI Logo" width="200"/>
+  <img src="images/logo.png" alt="Liam AI Logo" width="500"/>
 </p>
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Liam AI](https://img.shields.io/github/v/release/awiones/Liam-Ai?include_prereleases)
-![License](https://img.shields.io/github/license/awiones/Liam-Ai)
-![Stars](https://img.shields.io/github/stars/awiones/Liam-Ai)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/github/license/awiones/Liam-Ai" alt="License"/>
+  <img src="https://img.shields.io/github/stars/awiones/Liam-Ai" alt="Stars"/>
+  <img src="https://img.shields.io/github/forks/awiones/Liam-Ai" alt="Forks"/>
+</p>
 
 ## Executive Summary
 
