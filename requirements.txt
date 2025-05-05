@@ -1,0 +1,32 @@
+# Core AI and OpenAI API
+openai>=1.30.0
+python-dotenv==1.0.0
+requests>=2.31.0
+
+# Speech and audio
+SpeechRecognition==3.10.0
+pyttsx3==2.90
+PyAudio==0.2.13
+pipwin==0.5.2  # Helps with PyAudio installation on Windows
+
+# Computer vision and image processing
+opencv-python==4.8.1.78
+Pillow==10.1.0
+numpy==1.26.2
+tensorflow==2.15.0  # Specific version for compatibility
+tf-keras>=2.15.0    # Required for newer TF versions
+keras==2.15.0       # Match TensorFlow version
+deepface==0.0.79    # Specific version for compatibility
+retina-face>=0.0.13 # For face detection
+mtcnn>=0.1.1        # For face detection
+
+# Automation and GUI
+pywin32>=306  # For Windows automation
+pyautogui==0.9.54
+python-xlib>=0.33; platform_system=="Linux"  # For Linux GUI automation
+
+# Utilities
+setuptools>=65.5.0
+wheel>=0.38.4
+tqdm>=4.66.1
+psutil>=5.9.0  # For system monitoring
