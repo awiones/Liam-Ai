@@ -2,6 +2,7 @@ import os
 import cv2
 import time
 import threading
+import queue  # <-- Add this import
 import speech_recognition as sr
 import pyttsx3
 import base64
@@ -17,7 +18,16 @@ from PIL import Image
 import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
-from assets import CameraManager, handle_notepad_ai
+from assets import CameraManager
+from assets.write import handle_notepad_ai
+from assets.waiting_sounds import WaitingSounds  # Add this import
+from elevenlabs.client import ElevenLabs
+from elevenlabs import play
+import sounddevice as sd
+import soundfile as sf
+import random  # Add at the top with other imports
+
+from utils import print_banner, print_system_info  # <-- Add print_system_info import
 
 load_dotenv()
 
@@ -53,6 +63,11 @@ def ensure_api_key():
             f.write("GITHUB_TOKEN={}\n".format(user_key))
         else:
             f.write("OPENAI_API_KEY={}\n".format(user_key))
+
+        # Preserve ELEVENLABS_API_KEY if it exists
+        elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        if elevenlabs_key:
+            f.write("ELEVENLABS_API_KEY={}\n".format(elevenlabs_key))
             
     print("\nAPI key saved to .env file.")
     print("Please restart the program to use the new key.")
@@ -85,32 +100,44 @@ class Liam:
         self.speak_with_pauses = True  # Enable natural pauses by default
         
         self.recognizer = sr.Recognizer()
-        self.engine = pyttsx3.init()
         
-        # Configure voice settings
+        # Initialize text-to-speech settings
+        self.use_elevenlabs = False
+        self.elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY")
+        if self.elevenlabs_key:
+            try:
+                self.elevenlabs_client = ElevenLabs(api_key=self.elevenlabs_key)
+                self.use_elevenlabs = True
+                print("ElevenLabs TTS initialized successfully")
+                
+                # Cache for frequently used phrases
+                self.voice_cache = {}
+                
+                # Create a queue for audio processing
+                self.audio_queue = queue.Queue()
+                self.audio_thread = threading.Thread(target=self._process_audio_queue, daemon=True)
+                self.audio_thread.start()
+                
+            except Exception as e:
+                print(f"ElevenLabs initialization failed: {e}")
+                print("Falling back to Microsoft TTS")
+                self.use_elevenlabs = False
+        
+        # Initialize Microsoft TTS as fallback
+        self.engine = pyttsx3.init()
         self.engine.setProperty('rate', 150)  # Speed of speech
         
         # Get available voices and set a specific voice if requested
         voices = self.engine.getProperty('voices')
         
-        # Print available voices for reference
-        print("Available voices:")
-        for idx, voice in enumerate(voices):
-            print(f"Voice {idx}: {voice.name} ({voice.id})")
-            print(f"  - Gender: {voice.gender if hasattr(voice, 'gender') else 'Unknown'}")
-            print(f"  - Age: {voice.age if hasattr(voice, 'age') else 'Unknown'}")
-            print(f"  - Languages: {voice.languages if hasattr(voice, 'languages') else 'Unknown'}")
-        
         # Set voice based on index or default to the first voice
         if voice_index is not None and 0 <= voice_index < len(voices):
             self.engine.setProperty('voice', voices[voice_index].id)
-            print(f"Using voice: {voices[voice_index].name}")
         else:
             # Try to find a more natural-sounding voice (often the second voice is better)
             # On Windows, voices[1] is often Microsoft David (male) or Microsoft Zira (female)
             default_voice_index = 1 if len(voices) > 1 else 0
             self.engine.setProperty('voice', voices[default_voice_index].id)
-            print(f"Using default voice: {voices[default_voice_index].name}")
         
         # Adjust volume for more natural speech
         self.engine.setProperty('volume', 0.9)  # Volume (0.0 to 1.0)
@@ -129,8 +156,60 @@ class Liam:
         self.os_type = platform.system()
         self.notepad_hwnd = None
         
+        # Add handle_notepad_ai as instance method
+        self.handle_notepad_ai = lambda user_input, mode="write": handle_notepad_ai(self, user_input, mode)
+
+        self.waiting_sounds = WaitingSounds()
+
         print("Liam AI initialized and ready to help!")
         self.speak("Hello, I'm Liam. How can I assist you today?")
+
+    def _process_audio_queue(self):
+        """Background thread to process audio queue"""
+        while True:
+            try:
+                text, use_cache = self.audio_queue.get()
+                if text:
+                    self._generate_and_play_audio(text, use_cache)
+                self.audio_queue.task_done()
+            except Exception as e:
+                print(f"Error in audio queue processing: {e}")
+            time.sleep(0.1)
+
+    def _generate_and_play_audio(self, text, use_cache=True):
+        """Generate and play audio for the given text"""
+        try:
+            # Check cache first if enabled
+            if use_cache and text in self.voice_cache:
+                audio_data = self.voice_cache[text]
+                play(audio_data)
+                return
+
+            # Use streaming for longer text to start playback faster
+            if len(text) > 100:
+                audio_stream = self.elevenlabs_client.generate(
+                    text=text,
+                    voice="Brian",
+                    model="eleven_multilingual_v2",
+                    stream=True
+                )
+                play(audio_stream)
+            else:
+                # For shorter text, generate and cache
+                audio = self.elevenlabs_client.generate(
+                    text=text,
+                    voice="Brian",
+                    model="eleven_multilingual_v2"
+                )
+                
+                # Cache the audio for future use if it's a common phrase
+                if use_cache and len(text) < 50:  # Only cache short phrases
+                    self.voice_cache[text] = audio
+                
+                play(audio)
+                
+        except Exception as e:
+            print(f"Error generating audio: {e}")
 
     def toggle_speech_pauses(self):
         """Toggle natural speech pauses on/off"""
@@ -169,17 +248,70 @@ class Liam:
     def speak(self, text):
         print(f"Liam: {text}")
         
+        if self.use_elevenlabs:
+            try:
+                # For very short responses, use pre-generation to reduce latency
+                if len(text) < 20:
+                    # Check if we have it cached already
+                    if text in self.voice_cache:
+                        play(self.voice_cache[text])
+                        return
+                    
+                    # Generate and play immediately for very short text
+                    audio = self.elevenlabs_client.generate(
+                        text=text,
+                        voice="Brian",
+                        model="eleven_multilingual_v2"
+                    )
+                    self.voice_cache[text] = audio
+                    play(audio)
+                    return
+                
+                # For longer text, split into sentences and process in parallel
+                if self.speak_with_pauses and len(text) > 50:
+                    sentences = re.split(r'(?<=[.!?])\s+', text)
+                    
+                    # Start generating the first sentence immediately
+                    if sentences:
+                        first_sentence = sentences[0]
+                        audio = self.elevenlabs_client.generate(
+                            text=first_sentence,
+                            voice="Brian",
+                            model="eleven_multilingual_v2"
+                        )
+                        play(audio)
+                        
+                        # Queue the rest of the sentences
+                        for sentence in sentences[1:]:
+                            if sentence.strip():
+                                self.audio_queue.put((sentence, True))
+                        
+                        return
+                
+                # For medium-length text, use streaming
+                audio_stream = self.elevenlabs_client.generate(
+                    text=text,
+                    voice="Brian",
+                    model="eleven_multilingual_v2",
+                    stream=True
+                )
+                play(audio_stream)
+                return
+                
+            except Exception as e:
+                print(f"ElevenLabs TTS failed: {e}")
+                print("Falling back to Microsoft TTS")
+                self.use_elevenlabs = False
+        
+        # Fallback to Microsoft TTS
         if self.speak_with_pauses:
-            # Split text into sentences for more natural pauses
             sentences = re.split(r'(?<=[.!?])\s+', text)
             for sentence in sentences:
                 if sentence.strip():
                     self.engine.say(sentence)
                     self.engine.runAndWait()
-                    # Add a tiny pause between sentences
                     time.sleep(0.15)
         else:
-            # Original behavior
             self.engine.say(text)
             self.engine.runAndWait()
 
@@ -206,6 +338,10 @@ class Liam:
     def open_notepad(self):
         """Open Notepad and return the window handle"""
         try:
+            # Play waiting sound while opening
+            if self.use_elevenlabs:
+                self.waiting_sounds.play_single_waiting_sound()
+            
             # Start Notepad
             subprocess.Popen("notepad.exe")
             time.sleep(1)  # Wait for Notepad to open
@@ -374,302 +510,33 @@ class Liam:
         """Process user command and get AI response"""
         if not user_input:
             return
-                
-        # Camera commands
-        if "camera on" in user_input.lower() or "turn on camera" in user_input.lower() or "open camera" in user_input.lower():
-            with_analysis = "analyze" in user_input.lower() or "recognition" in user_input.lower() or "detect" in user_input.lower()
-            self.speak("Opening the camera now.")
-            if self.camera_manager.start_camera(with_analysis=with_analysis):
-                if with_analysis:
-                    self.speak("Camera is now on with face analysis enabled. I can detect faces, emotions, age, and gender.")
+
+        # Check for direct notepad commands first
+        notepad_keywords = ["notepad", "write", "open notepad"]
+        if any(keyword in user_input.lower() for keyword in notepad_keywords):
+            try:
+                if "write" in user_input.lower() or "write about" in user_input.lower():
+                    self.handle_notepad_ai(user_input, "write")
                 else:
-                    self.speak("Camera is now on and I can access it if you need me to take a photo or describe the scene.")
-            else:
-                self.speak("I can't access your camera. Please make sure it's connected and not used by another app.")
-            return
-        elif "start analysis" in user_input.lower() or "begin analysis" in user_input.lower() or "analyze faces" in user_input.lower() or "face analysis" in user_input.lower() or "play analysis" in user_input.lower():
-            if not self.camera_manager.is_active:
-                self.speak("Camera is not on. Turning it on first.")
-                if not self.camera_manager.start_camera():
-                    self.speak("Failed to start camera.")
-                    return
-                time.sleep(1)
-            
-            self.speak("Starting face analysis. I'll detect faces and show information about age, gender, and emotion.")
-            if self.camera_manager.start_analysis():
-                self.speak("Face analysis is now active.")
-            else:
-                self.speak("Face analysis is already running or couldn't be started.")
-            return
-        elif "stop analysis" in user_input.lower() or "end analysis" in user_input.lower():
-            if self.camera_manager.stop_analysis():
-                self.speak("Face analysis stopped.")
-            else:
-                self.speak("Face analysis is not currently running.")
-            return
-        elif "who do you see" in user_input.lower() or "who is there" in user_input.lower() or "detect people" in user_input.lower():
-            if not self.camera_manager.is_active:
-                self.speak("Opening the camera with face analysis.")
-                if not self.camera_manager.start_camera(with_analysis=True):
-                    self.speak("Failed to start camera.")
-                    return
-                time.sleep(1.5)
-            elif not self.camera_manager.is_analyzing:
-                self.speak("Starting face analysis.")
-                self.camera_manager.start_analysis()
-                time.sleep(1.5)
-                
-            analysis = self.camera_manager.get_latest_analysis()
-            if analysis:
-                try:
-                    if isinstance(analysis, list) and len(analysis) > 0:
-                        faces_info = []
-                        for face in analysis:
-                            gender = face.get('gender', 'unknown')
-                            age = face.get('age', 'unknown')
-                            emotion = face.get('dominant_emotion', 'neutral')
-                            faces_info.append(f"a {age} year old {gender} who appears {emotion}")
-                        
-                        if faces_info:
-                            if len(faces_info) == 1:
-                                self.speak(f"I can see {faces_info[0]}.")
-                            else:
-                                people_list = ", ".join(faces_info[:-1]) + " and " + faces_info[-1]
-                                self.speak(f"I can see {len(faces_info)} people: {people_list}.")
-                        else:
-                            self.speak("I can see faces but couldn't determine details.")
+                    success = self.open_notepad()
+                    if success:
+                        self.speak("I've opened Notepad for you.")
                     else:
-                        self.speak("I can see a person but couldn't analyze their details.")
-                except Exception as e:
-                    print(f"ERROR: Analysis processing error: {str(e)}")
-                    self.speak("I detected faces but had trouble processing the analysis.")
-            else:
-                self.speak("I don't see any people in the camera view right now.")
-            return
-        elif "camera off" in user_input.lower() or "turn off camera" in user_input.lower() or "close camera" in user_input.lower():
-            if self.camera_manager.stop_camera():
-                self.speak("Camera turned off.")
-            else:
-                self.speak("Camera is already off.")
-            return
-        elif "take photo" in user_input.lower() or "take picture" in user_input.lower() or "capture image" in user_input.lower():
-            if not self.camera_manager.is_active:
-                self.speak("Camera is not on. Turning it on first.")
-                if not self.camera_manager.start_camera():
-                    self.speak("Failed to start camera.")
-                    return
-                time.sleep(1)
-
-            filename = f"liam_photo_{time.strftime('%Y%m%d_%H%M%S')}.jpg"
-            if self.camera_manager.take_photo(filename):
-                self.speak(f"Photo taken and saved as {filename}")
-            else:
-                self.speak("Failed to capture image.")
-            return
-        elif "what do you see" in user_input.lower() or "describe what you see" in user_input.lower() or "what's happening" in user_input.lower() or "what happening" in user_input.lower():
-            if not self.camera_manager.is_active:
-                self.speak("Opening the camera to see what's happening.")
-                if not self.camera_manager.start_camera():
-                    self.speak("Failed to start camera.")
-                    return
-                time.sleep(1.5)
-
-            self.speak("Analyzing what I see...")
-            jpg_as_text = self.camera_manager.get_frame_base64()
-            
-            if jpg_as_text:
-                try:
-                    model_name = "openai/gpt-4o" if os.environ.get("GITHUB_TOKEN") else "gpt-4o"
-                    response = self.client.chat.completions.create(
-                        model=model_name,
-                        messages=[
-                            {
-                                "role": "system", 
-                                "content": "You are Liam, an AI assistant that can see through a camera. Describe what you see in the image concisely and accurately. Focus on people, activities, objects, and any notable events. Keep your description conversational and helpful."
-                            },
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": "What do you see in this camera feed? Describe what's happening."},
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {"url": f"data:image/jpeg;base64,{jpg_as_text}"}
-                                    }
-                                ]
-                            }
-                        ],
-                        max_tokens=150
-                    )
-                    description = response.choices[0].message.content
-                    self.speak(description)
-                except Exception as e:
-                    print(f"ERROR: Vision API error: {str(e)}")
-                    self.speak("I can see through the camera, but I'm having trouble analyzing what I see right now.")
-            else:
-                self.speak("I'm having trouble capturing an image from the camera.")
-            return
-
-        # Enhanced Notepad commands with topic generation
-        elif "open notepad" in user_input.lower():
-            if self.open_notepad():
-                self.speak("Notepad is now open.")
-            else:
-                self.speak("I had trouble opening Notepad.")
-            return
-        elif "write in notepad" in user_input.lower() or "write to notepad" in user_input.lower():
-            # Use helper for AI topic/content
-            if handle_notepad_ai(self, user_input, mode="write"):
+                        self.speak("I had trouble opening Notepad.")
                 return
-            # fallback to traditional behavior
-            self.speak("What would you like me to write?")
-            time.sleep(0.5)
-            note_content = self.listen()
-            if note_content:
-                if self.write_to_notepad(note_content):
-                    self.speak("I've written your text in Notepad.")
-                else:
-                    self.speak("I had trouble writing to Notepad.")
-            else:
-                self.speak("I couldn't understand what to write.")
-            return
-        elif "write about" in user_input.lower() or "write on" in user_input.lower():
-            if handle_notepad_ai(self, user_input, mode="write_explicit"):
+            except Exception as e:
+                print(f"Error handling notepad command: {e}")
+                self.speak("I encountered an error while trying to work with Notepad.")
                 return
-            # fallback if no topic found
-            self.speak("I couldn't understand what topic you want me to write about.")
-            return
-        elif "add to notepad" in user_input.lower() or "append to notepad" in user_input.lower():
-            if handle_notepad_ai(self, user_input, mode="append"):
-                return
-            # fallback to traditional behavior
-            self.speak("What would you like me to add?")
-            time.sleep(0.5)
-            note_content = self.listen()
-            if note_content:
-                if self.append_to_notepad(note_content):
-                    self.speak("I've added your text to Notepad.")
-                else:
-                    self.speak("I had trouble adding to Notepad.")
-            else:
-                self.speak("I couldn't understand what to add.")
-            return
-        elif "clear notepad" in user_input.lower() or "erase notepad" in user_input.lower():
-            if self.clear_notepad():
-                self.speak("I've cleared the Notepad content.")
-            else:
-                self.speak("I had trouble clearing Notepad.")
-            return
-        elif "save notepad" in user_input.lower():
-            self.speak("What would you like to name the file?")
-            time.sleep(0.5)
-            filename = self.listen()
-            
-            if filename:
-                if not filename.lower().endswith('.txt'):
-                    filename += '.txt'
-                if self.save_notepad(filename):
-                    self.speak(f"I've saved the Notepad content as {filename}.")
-                else:
-                    self.speak("I had trouble saving the Notepad file.")
-            else:
-                self.speak("I couldn't understand the filename.")
-            return
-        elif "dictate to notepad" in user_input.lower() or "take dictation" in user_input.lower():
-            self.speak("I'm ready to take dictation. Say 'stop dictation' when you're finished.")
-            
-            # Open Notepad if not already open
-            if self.notepad_hwnd is None or not win32gui.IsWindow(self.notepad_hwnd):
-                if not self.open_notepad():
-                    self.speak("Could not open Notepad")
-                    return
-            
-            dictation_active = True
-            while dictation_active:
-                dictated_text = self.listen()
-                if not dictated_text:
-                    continue
-                    
-                if "stop dictation" in dictated_text.lower() or "end dictation" in dictated_text.lower():
-                    dictation_active = False
-                    self.speak("Dictation complete.")
-                else:
-                    if self.append_to_notepad(dictated_text + " "):
-                        print(f"Added to notepad: {dictated_text}")
-                    else:
-                        self.speak("I had trouble adding that to Notepad.")
-                        dictation_active = False
-            return
 
-        # Add a specific handler for "brighten the notepad" or similar commands
-        elif any(phrase in user_input.lower() for phrase in ["brighten the notepad", "right in the notepad", "write in notepad about"]):
-            # Extract topic after "about" if present
-            topic = None
-            if "about" in user_input.lower():
-                topic_index = user_input.lower().find("about")
-                if topic_index != -1:
-                    topic = user_input[topic_index + 6:].strip()
-            
-            if topic:
-                # Create a modified input that handle_notepad_ai can process
-                modified_input = f"write about {topic}"
-                if handle_notepad_ai(self, modified_input, mode="write_explicit"):
-                    return
-            
-            # Fallback
-            self.speak("I couldn't understand what to write in Notepad.")
-            return
-            
-        # Voice commands
-        elif "change voice" in user_input.lower() or "switch voice" in user_input.lower():
-            voices = self.list_available_voices()
-            voice_list = ""
-            for v in voices:
-                voice_list += f"Voice {v['index']}: {v['name']}\n"
-            
-            self.speak("Here are the available voices. Which one would you like to use? Please say the number.")
-            print("\nAvailable voices:")
-            print(voice_list)
-            
-            time.sleep(0.5)
-            voice_choice = self.listen()
-            if voice_choice and voice_choice.isdigit():
-                voice_index = int(voice_choice)
-                if self.change_voice(voice_index):
-                    self.speak("I've changed my voice. How does this sound?")
-                else:
-                    self.speak("That voice number is not available. Please try again with a valid number.")
-            else:
-                self.speak("I couldn't understand which voice number you want. Please try again.")
-            return
-        elif "list voices" in user_input.lower() or "show voices" in user_input.lower() or "available voices" in user_input.lower():
-            voices = self.list_available_voices()
-            self.speak(f"I have {len(voices)} voices available. Here they are:")
-            for v in voices:
-                print(f"Voice {v['index']}: {v['name']} ({v['gender']})")
-            self.speak("You can say 'change voice' to select a different voice.")
-            return
-        elif "toggle pauses" in user_input.lower() or "toggle speech pauses" in user_input.lower() or "natural pauses" in user_input.lower():
-            enabled = self.toggle_speech_pauses()
-            if enabled:
-                self.speak("Natural speech pauses are now enabled. I'll speak with more natural rhythm and pauses between sentences.")
-            else:
-                self.speak("Natural speech pauses are now disabled. I'll speak without pauses between sentences.")
-            return
-            
-        # Other application commands
-        elif "open browser" in user_input.lower() or "open chrome" in user_input.lower() or "open firefox" in user_input.lower() or "open safari" in user_input.lower():
-            self.open_application("browser")
-            return
-        elif "open terminal" in user_input.lower() or "open command prompt" in user_input.lower() or "open cmd" in user_input.lower():
-            self.open_application("terminal")
-            return
-        elif "write file" in user_input.lower() or "create file" in user_input.lower() or "create document" in user_input.lower():
-            self.create_text_file(user_input)
-            return
-            
+        # Continue with normal AI response for other commands
         self.conversation_history.append({"role": "user", "content": user_input})
         
         try:
+            # Play waiting sound before processing (non-blocking)
+            if self.use_elevenlabs:
+                self.waiting_sounds.play_single_waiting_sound()
+            
             model_name = "openai/gpt-4o" if os.environ.get("GITHUB_TOKEN") else "gpt-4o"
             response = self.client.chat.completions.create(
                 model=model_name,
@@ -783,6 +650,8 @@ class Liam:
 
 def main():
     try:
+        print_banner()  # <-- Show banner at program start
+        print_system_info()  # <-- Show system info at program start
         api_key = ensure_api_key()
         if not api_key or api_key.strip() == "":
             print("No valid API key found. Please restart the program.")
