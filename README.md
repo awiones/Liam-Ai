@@ -42,23 +42,62 @@ Liam AI integrates several technologies:
 ## Roadmap: How Liam AI Works
 
 ```mermaid
-graph TD
-    A[User Input] -->|Voice Command| B[Speech Recognition]
-    B -->|Text Output| C[Command Processing]
-    C --> D{Command Type}
-    D -->|Notepad Automation| E[Open/Write/Append/Clear Notepad]
-    D -->|Camera Control| F[Enable/Disable Camera]
-    D -->|AI Vision| G[Analyze Scene/Objects/Text]
-    D -->|File Operations| H[Create/Save Text Files]
-    D -->|General Queries| I[Generate AI Response]
-    E --> J[System Integration]
+flowchart LR
+    subgraph Input ["User Interaction"]
+        direction TB
+        A["🎤 User Voice Input"] -->|Voice Command| B["🔍 Speech Recognition"]
+    end
+    
+    subgraph Processing ["Command Processing"]
+        direction TB
+        B -->|Text Output| C["⚙️ Intent Analysis"]
+        C --> D{"🔄 Command\nClassification"}
+    end
+    
+    subgraph Actions ["System Actions"]
+        direction TB
+        D -->|Notepad| E["📝 Notepad Operations\n(Write/Edit/Clear)"]
+        D -->|Camera| F["📷 Camera Control"]
+        D -->|Vision| G["👁️ AI Vision Analysis"]
+        D -->|Files| H["💾 File Operations"]
+        D -->|Queries| I["🧠 AI Response Generation"]
+    end
+    
+    subgraph Output ["System Response"]
+        direction TB
+        J["🔄 System Integration"] --> K["📤 Response Preparation"]
+        K -->|Audio| L["🔊 Voice Response"]
+        K -->|Visual| M["📊 Display Output"]
+    end
+    
+    E --> J
     F --> J
     G --> J
     H --> J
     I --> J
-    J --> K[Output Response]
-    K -->|Text-to-Speech| L[Speak Response]
-    K -->|Display| M[Show Output]
+    
+    Input --> Processing
+    Processing --> Actions
+    Actions --> Output
+    
+    classDef input fill:#c4e3ff,stroke:#0066cc,stroke-width:2px,color:#003366,font-weight:bold
+    classDef process fill:#ffe6cc,stroke:#ff9900,stroke-width:2px,color:#804000,font-weight:bold
+    classDef decision fill:#fff2cc,stroke:#ffcc00,stroke-width:2px,color:#806600,font-weight:bold,border-radius:12px
+    classDef action fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#1e4d2a,font-weight:bold
+    classDef output fill:#e6ccff,stroke:#9673a6,stroke-width:2px,color:#4d0080,font-weight:bold
+    
+    class A,B input
+    class C process
+    class D decision
+    class E,F,G,H,I action
+    class J,K,L,M output
+    
+    linkStyle default stroke:#666,stroke-width:2px,fill:none
+    
+    style Input fill:#f5faff,stroke:#0066cc,stroke-width:1px,color:#0066cc,stroke-dasharray: 5 5
+    style Processing fill:#fff8f0,stroke:#ff9900,stroke-width:1px,color:#ff9900,stroke-dasharray: 5 5
+    style Actions fill:#f0fff0,stroke:#82b366,stroke-width:1px,color:#82b366,stroke-dasharray: 5 5
+    style Output fill:#f9f0ff,stroke:#9673a6,stroke-width:1px,color:#9673a6,stroke-dasharray: 5 5
 ```
 
 ## Technical Requirements
