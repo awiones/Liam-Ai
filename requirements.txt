@@ -1,62 +1,32 @@
-
 # ==============================
 # LIAM AI Assistant Requirements
 # ==============================
-
-# Core AI and API Clients
-# -----------------------
 openai>=1.30.0
 python-dotenv>=1.0.0
 requests>=2.31.0
-
-# Speech Recognition and Text-to-Speech
-# -------------------------------------
 SpeechRecognition>=3.10.0
 pyttsx3>=2.90
 PyAudio>=0.2.13
 elevenlabs>=0.2.24  # For premium voice capabilities
 sounddevice>=0.4.6  # Audio playback
 soundfile>=0.12.1   # Sound file manipulation
-
-# Windows Automation and GUI Control
-# ----------------------------------
 pywin32>=306        # Windows API access (includes win32gui, win32con, win32api, win32clipboard)
 pyautogui>=0.9.54   # Fallback GUI automation
 pyperclip>=1.8.2    # Enhanced clipboard operations
-
-# Computer Vision
-# --------------
 opencv-python>=4.8.1.78
 Pillow>=10.1.0
 numpy>=1.26.2
-
-# Machine Learning (if needed)
-# ---------------------------
 tensorflow>=2.15.0  # ML framework
 tf-keras>=2.15.0    # Keras integration for TF
 keras>=2.15.0       # High-level neural networks API
-
-# Face Detection (if needed)
-# -------------------------
 deepface>=0.0.79    # Face recognition
 retina-face>=0.0.13 # Precise face detection
 mtcnn>=0.1.1        # Multi-task CNN for face detection
-
-# Cross-Platform Support
-# ---------------------
 python-xlib>=0.33; platform_system=="Linux"  # Linux GUI automation
-
-# Development and Utilities
-# ------------------------
 setuptools>=65.5.0
 wheel>=0.38.4
 tqdm>=4.66.1        # Progress bars
 psutil>=5.9.0       # System monitoring
 pipwin>=0.5.2       # Helps with PyAudio installation on Windows
+pytesseract>=0.3.10   # For OCR
 
-# Installation Notes:
-# ------------------
-# 1. For Windows, install PyAudio with: pip install pipwin && pipwin install pyaudio
-# 2. Some packages may require C++ build tools. Install Visual Studio Build Tools if needed.
-# 3. For PyWin32 installation issues: pip install --only-binary :all: pywin32
-# 4. If PyWin32 still fails: pip install pywin32==306 --force-reinstall --target=<path_to_python_site_packages>

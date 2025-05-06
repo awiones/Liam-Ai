@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 # Version information
-LIAM_VERSION = "1.0.0"
-LIAM_BUILD_DATE = "2025-05-05"
+LIAM_VERSION = "2.0.0"
+LIAM_BUILD_DATE = "2025-05-06"
 LIAM_AUTHOR = "Awiones"
 
 # ASCII Art Banner

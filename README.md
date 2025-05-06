@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version"/>
   <img src="https://img.shields.io/github/license/awiones/Liam-Ai" alt="License"/>
   <img src="https://img.shields.io/github/stars/awiones/Liam-Ai" alt="Stars"/>
   <img src="https://img.shields.io/github/forks/awiones/Liam-Ai" alt="Forks"/>
@@ -13,7 +13,7 @@
 
 ## Executive Summary
 
-Liam AI is a Python-based voice assistant that enables users to control their Windows computer using natural language voice commands. It leverages advanced language models for intent recognition and can interact with system applications, especially Notepad, using robust automation and fallback strategies. Liam AI provides both speech recognition and text-to-speech (TTS) capabilities, supporting both Microsoft and ElevenLabs voices.
+Liam AI is a Python-based voice assistant that enables users to control their Windows computer using natural language voice commands. It leverages advanced language models for intent recognition and can interact with system applications, especially Notepad, using robust automation and fallback strategies.
 
 ## Core Technology
 
@@ -24,18 +24,42 @@ Liam AI integrates several technologies:
 - **Text-to-Speech Synthesis**: Provides audible responses using Microsoft pyttsx3 or ElevenLabs (if API key is provided). ElevenLabs is preferred for higher quality, with fallback to Microsoft TTS.
 - **System & Application Integration**: Automates Notepad and other applications using Windows APIs (win32gui, win32com), with multiple fallback methods (clipboard, PyAutoGUI, temp files) for reliability.
 - **Waiting Sounds**: Plays short waiting sounds (e.g., "uhhh", "umm") while processing, using sounddevice and soundfile.
-- **Camera Support**: (Optional) Includes a camera manager for future expansion.
+- **Camera Support**: Includes a camera manager for future expansion.
+- **AI Vision**: Can analyze real-time camera feed to describe the scene, identify objects, and text.
 
 ## Key Capabilities
 
-| Feature                       | Description                                                                |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| **Voice Command Recognition** | Understands and processes natural language instructions                    |
-| **System Control**            | Manages Notepad and can open/close other applications (browser, terminal)  |
-| **Notepad Automation**        | Writes, appends, and clears content in Notepad using robust fallback logic |
-| **File Operations**           | Creates text files and writes dictated content                             |
-| **Speech Synthesis**          | Speaks responses using ElevenLabs (if available) or Microsoft TTS          |
-| **Waiting Feedback**          | Plays short sounds while processing to indicate activity                   |
+| Feature                       | Description                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Voice Command Recognition** | Understands and processes natural language instructions                                            |
+| **System Control**            | Manages Notepad and can open/close other applications (browser, terminal)                          |
+| **Notepad Automation**        | Writes, appends, and clears content in Notepad using robust fallback logic                         |
+| **File Operations**           | Creates text files and writes dictated content                                                     |
+| **Speech Synthesis**          | Speaks responses using ElevenLabs (if available) or Microsoft TTS                                  |
+| **Waiting Feedback**          | Plays short sounds while processing to indicate activity                                           |
+| **AI Vision**                 | Describes the camera view in real-time, identifies objects, and reads text using OCR (if enabled). |
+
+## Roadmap: How Liam AI Works
+
+```mermaid
+graph TD
+    A[User Input] -->|Voice Command| B[Speech Recognition]
+    B -->|Text Output| C[Command Processing]
+    C --> D{Command Type}
+    D -->|Notepad Automation| E[Open/Write/Append/Clear Notepad]
+    D -->|Camera Control| F[Enable/Disable Camera]
+    D -->|AI Vision| G[Analyze Scene/Objects/Text]
+    D -->|File Operations| H[Create/Save Text Files]
+    D -->|General Queries| I[Generate AI Response]
+    E --> J[System Integration]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
+    J --> K[Output Response]
+    K -->|Text-to-Speech| L[Speak Response]
+    K -->|Display| M[Show Output]
+```
 
 ## Technical Requirements
 
@@ -64,23 +88,6 @@ Liam AI integrates several technologies:
 - **Accessibility**: Enables hands-free computer use, especially for users with mobility challenges.
 - **Productivity**: Automates repetitive tasks like writing or editing text in Notepad.
 - **Education**: Assists with dictation, note-taking, and quick information lookup.
-
-## Notepad Integration Details
-
-- Liam can write, append, and clear content in Notepad using several fallback methods:
-  - Windows scripting (SendKeys)
-  - Clipboard automation
-  - PyAutoGUI (if installed)
-  - Temporary file replacement
-- Liam provides spoken feedback and plays a short waiting sound while processing.
-- If ElevenLabs is configured, responses are spoken with high-quality voices; otherwise, Microsoft TTS is used.
-
-## Development Roadmap
-
-- Improved cross-platform support (Linux/Mac: partial support for file/app control)
-- More robust application integration (beyond Notepad)
-- Enhanced context awareness and memory
-- Customizable voice and response style
 
 ## Open Source Collaboration
 

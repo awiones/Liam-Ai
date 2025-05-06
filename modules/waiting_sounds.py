@@ -7,13 +7,13 @@ import time
 class WaitingSounds:
     def __init__(self):
         self.waiting_sounds = [
-            'assets/sounds/waiting/uhhh.mp3',
-            'assets/sounds/waiting/umm.mp3',
-            'assets/sounds/waiting/erm.mp3'
+            'modules/sounds/waiting/uhhh.mp3',
+            'modules/sounds/waiting/umm.mp3',
+            'modules/sounds/waiting/erm.mp3'
         ]
 
     def play_single_waiting_sound(self):
-        """Play two random waiting sounds in sequence with a gap in a background thread"""
+        """Play a random waiting sound in a background thread (only if ElevenLabs is enabled)"""
         def play_sounds():
             try:
                 # Try to play just one sound instead of two for quicker operations

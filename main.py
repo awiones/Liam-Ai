@@ -2,7 +2,7 @@ import os
 import cv2
 import time
 import threading
-import queue  # <-- Add this import
+import queue
 import speech_recognition as sr
 import pyttsx3
 import base64
@@ -18,16 +18,16 @@ from PIL import Image
 import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
-from assets import CameraManager
-from assets.write import handle_notepad_ai
-from assets.waiting_sounds import WaitingSounds  # Add this import
+from modules import CameraManager
+from modules.write.notepad import handle_notepad_ai, ensure_notepad_window, write_content_to_notepad, safe_send_keys
+from modules.waiting_sounds import WaitingSounds 
 from elevenlabs.client import ElevenLabs
 from elevenlabs import play
 import sounddevice as sd
 import soundfile as sf
-import random  # Add at the top with other imports
+import random  
 
-from utils import print_banner, print_system_info  # <-- Add print_system_info import
+from utils import print_banner, print_system_info 
 
 load_dotenv()
 
@@ -35,13 +35,11 @@ def ensure_api_key():
     github_token = os.environ.get("GITHUB_TOKEN", "").strip()
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
     
-    # Check if we already have a valid key
     if github_token:
         return github_token
     if openai_key:
         return openai_key
         
-    # No valid key found, prompt user
     print("\nNo valid API key found in .env file.")
     print("Please enter your API key:")
     user_key = input("API Key: ").strip()
@@ -58,13 +56,12 @@ def ensure_api_key():
         exit(1)
         
     env_path = os.path.join(os.path.dirname(__file__), ".env")
-    with open(env_path, 'w') as f:  # Use 'w' to overwrite existing file
+    with open(env_path, 'w') as f:
         if key_type == "g":
             f.write("GITHUB_TOKEN={}\n".format(user_key))
         else:
             f.write("OPENAI_API_KEY={}\n".format(user_key))
 
-        # Preserve ELEVENLABS_API_KEY if it exists
         elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
         if elevenlabs_key:
             f.write("ELEVENLABS_API_KEY={}\n".format(elevenlabs_key))
@@ -96,12 +93,10 @@ class Liam:
                 base_url="https://api.openai.com/v1"
             )
         
-        # Speech settings
-        self.speak_with_pauses = True  # Enable natural pauses by default
+        self.speak_with_pauses = True
         
         self.recognizer = sr.Recognizer()
         
-        # Initialize text-to-speech settings
         self.use_elevenlabs = False
         self.elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY")
         if self.elevenlabs_key:
@@ -110,10 +105,8 @@ class Liam:
                 self.use_elevenlabs = True
                 print("ElevenLabs TTS initialized successfully")
                 
-                # Cache for frequently used phrases
                 self.voice_cache = {}
                 
-                # Create a queue for audio processing
                 self.audio_queue = queue.Queue()
                 self.audio_thread = threading.Thread(target=self._process_audio_queue, daemon=True)
                 self.audio_thread.start()
@@ -123,24 +116,18 @@ class Liam:
                 print("Falling back to Microsoft TTS")
                 self.use_elevenlabs = False
         
-        # Initialize Microsoft TTS as fallback
         self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 150)  # Speed of speech
+        self.engine.setProperty('rate', 150)
         
-        # Get available voices and set a specific voice if requested
         voices = self.engine.getProperty('voices')
         
-        # Set voice based on index or default to the first voice
         if voice_index is not None and 0 <= voice_index < len(voices):
             self.engine.setProperty('voice', voices[voice_index].id)
         else:
-            # Try to find a more natural-sounding voice (often the second voice is better)
-            # On Windows, voices[1] is often Microsoft David (male) or Microsoft Zira (female)
             default_voice_index = 1 if len(voices) > 1 else 0
             self.engine.setProperty('voice', voices[default_voice_index].id)
         
-        # Adjust volume for more natural speech
-        self.engine.setProperty('volume', 0.9)  # Volume (0.0 to 1.0)
+        self.engine.setProperty('volume', 0.9)
         
         self.camera_manager = CameraManager()
         
@@ -156,7 +143,6 @@ class Liam:
         self.os_type = platform.system()
         self.notepad_hwnd = None
         
-        # Add handle_notepad_ai as instance method
         self.handle_notepad_ai = lambda user_input, mode="write": handle_notepad_ai(self, user_input, mode)
 
         self.waiting_sounds = WaitingSounds()
@@ -165,7 +151,6 @@ class Liam:
         self.speak("Hello, I'm Liam. How can I assist you today?")
 
     def _process_audio_queue(self):
-        """Background thread to process audio queue"""
         while True:
             try:
                 text, use_cache = self.audio_queue.get()
@@ -177,15 +162,12 @@ class Liam:
             time.sleep(0.1)
 
     def _generate_and_play_audio(self, text, use_cache=True):
-        """Generate and play audio for the given text"""
         try:
-            # Check cache first if enabled
             if use_cache and text in self.voice_cache:
                 audio_data = self.voice_cache[text]
                 play(audio_data)
                 return
 
-            # Use streaming for longer text to start playback faster
             if len(text) > 100:
                 audio_stream = self.elevenlabs_client.generate(
                     text=text,
@@ -195,15 +177,13 @@ class Liam:
                 )
                 play(audio_stream)
             else:
-                # For shorter text, generate and cache
                 audio = self.elevenlabs_client.generate(
                     text=text,
                     voice="Brian",
                     model="eleven_multilingual_v2"
                 )
                 
-                # Cache the audio for future use if it's a common phrase
-                if use_cache and len(text) < 50:  # Only cache short phrases
+                if use_cache and len(text) < 50:
                     self.voice_cache[text] = audio
                 
                 play(audio)
@@ -212,12 +192,10 @@ class Liam:
             print(f"Error generating audio: {e}")
 
     def toggle_speech_pauses(self):
-        """Toggle natural speech pauses on/off"""
         self.speak_with_pauses = not self.speak_with_pauses
         return self.speak_with_pauses
         
     def list_available_voices(self):
-        """List all available voices and their properties"""
         voices = self.engine.getProperty('voices')
         voice_info = []
         
@@ -235,7 +213,6 @@ class Liam:
         return voice_info
     
     def change_voice(self, voice_index):
-        """Change the voice to the specified index"""
         voices = self.engine.getProperty('voices')
         if 0 <= voice_index < len(voices):
             self.engine.setProperty('voice', voices[voice_index].id)
@@ -250,14 +227,11 @@ class Liam:
         
         if self.use_elevenlabs:
             try:
-                # For very short responses, use pre-generation to reduce latency
                 if len(text) < 20:
-                    # Check if we have it cached already
                     if text in self.voice_cache:
                         play(self.voice_cache[text])
                         return
                     
-                    # Generate and play immediately for very short text
                     audio = self.elevenlabs_client.generate(
                         text=text,
                         voice="Brian",
@@ -267,11 +241,9 @@ class Liam:
                     play(audio)
                     return
                 
-                # For longer text, split into sentences and process in parallel
                 if self.speak_with_pauses and len(text) > 50:
                     sentences = re.split(r'(?<=[.!?])\s+', text)
                     
-                    # Start generating the first sentence immediately
                     if sentences:
                         first_sentence = sentences[0]
                         audio = self.elevenlabs_client.generate(
@@ -281,14 +253,12 @@ class Liam:
                         )
                         play(audio)
                         
-                        # Queue the rest of the sentences
                         for sentence in sentences[1:]:
                             if sentence.strip():
                                 self.audio_queue.put((sentence, True))
                         
                         return
                 
-                # For medium-length text, use streaming
                 audio_stream = self.elevenlabs_client.generate(
                     text=text,
                     voice="Brian",
@@ -303,7 +273,6 @@ class Liam:
                 print("Falling back to Microsoft TTS")
                 self.use_elevenlabs = False
         
-        # Fallback to Microsoft TTS
         if self.speak_with_pauses:
             sentences = re.split(r'(?<=[.!?])\s+', text)
             for sentence in sentences:
@@ -336,23 +305,18 @@ class Liam:
                 return None
 
     def open_notepad(self):
-        """Open Notepad and return the window handle"""
         try:
-            # Play waiting sound while opening
-            if self.use_elevenlabs:
+            if self.use_elevenlabs and hasattr(self, 'waiting_sounds'):
                 self.waiting_sounds.play_single_waiting_sound()
             
-            # Start Notepad
             subprocess.Popen("notepad.exe")
-            time.sleep(1)  # Wait for Notepad to open
+            time.sleep(1)
 
-            # Find Notepad window
             self.notepad_hwnd = win32gui.FindWindow("Notepad", None)
             if self.notepad_hwnd == 0:
                 print("Could not find Notepad window")
                 return False
 
-            # Bring Notepad to front
             win32gui.ShowWindow(self.notepad_hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(self.notepad_hwnd)
             time.sleep(0.5)
@@ -363,139 +327,66 @@ class Liam:
             return False
 
     def write_to_notepad(self, text):
-        """Write text directly to Notepad"""
-        try:
-            # Check if Notepad is already open
-            if self.notepad_hwnd is None or not win32gui.IsWindow(self.notepad_hwnd):
-                if not self.open_notepad():
-                    self.speak("Could not open Notepad")
-                    return False
-            else:
-                # Bring existing Notepad window to front
-                win32gui.ShowWindow(self.notepad_hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(self.notepad_hwnd)
-                time.sleep(0.5)
-
-            # Create shell object
-            shell = win32com.client.Dispatch("WScript.Shell")
-            
-            # Ensure Notepad has focus
-            if win32gui.GetForegroundWindow() != self.notepad_hwnd:
-                win32gui.SetForegroundWindow(self.notepad_hwnd)
-                time.sleep(0.5)
-            
-            # Clear any existing text
-            shell.SendKeys("^a")  # Ctrl+A to select all
-            time.sleep(0.1)
-            shell.SendKeys("{DELETE}")  # Delete selected text
-            time.sleep(0.1)
-            
-            # Write the text in chunks to avoid issues with long text
-            chunk_size = 100  # Send text in smaller chunks
-            for i in range(0, len(text), chunk_size):
-                chunk = text[i:i+chunk_size]
-                shell.SendKeys(chunk)
-                time.sleep(0.05)  # Small delay between chunks
-            
-            return True
-
-        except Exception as e:
-            print(f"Error writing to Notepad: {e}")
+        success, hwnd = ensure_notepad_window(self)
+        if not success:
             return False
+            
+        return write_content_to_notepad(text, hwnd)
 
     def append_to_notepad(self, text):
-        """Append text to existing Notepad content"""
+        success, hwnd = ensure_notepad_window(self)
+        if not success:
+            return False
+
         try:
-            # Check if Notepad is already open
-            if self.notepad_hwnd is None or not win32gui.IsWindow(self.notepad_hwnd):
-                if not self.open_notepad():
-                    self.speak("Could not open Notepad")
-                    return False
-            else:
-                # Bring existing Notepad window to front
-                win32gui.ShowWindow(self.notepad_hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(self.notepad_hwnd)
-                time.sleep(0.5)
-
-            # Create shell object
             shell = win32com.client.Dispatch("WScript.Shell")
-            
-            # Move to end of document
-            shell.SendKeys("^{END}")  # Ctrl+End
-            
-            # Add a new line if needed
+            shell.SendKeys("^{END}")
             shell.SendKeys("{ENTER}")
-            
-            # Write the text
-            shell.SendKeys(text)
-            return True
-
+            return safe_send_keys(shell, text)
         except Exception as e:
             print(f"Error appending to Notepad: {e}")
             return False
 
     def clear_notepad(self):
-        """Clear all text in Notepad"""
-        try:
-            # Check if Notepad is already open
-            if self.notepad_hwnd is None or not win32gui.IsWindow(self.notepad_hwnd):
-                if not self.open_notepad():
-                    self.speak("Could not open Notepad")
-                    return False
-            else:
-                # Bring existing Notepad window to front
-                win32gui.ShowWindow(self.notepad_hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(self.notepad_hwnd)
-                time.sleep(0.5)
+        success, hwnd = ensure_notepad_window(self)
+        if not success:
+            return False
 
-            # Create shell object
+        try:
             shell = win32com.client.Dispatch("WScript.Shell")
-            
-            # Select all text (Ctrl+A) and delete it
             shell.SendKeys("^a")
             time.sleep(0.1)
             shell.SendKeys("{DELETE}")
             return True
-
         except Exception as e:
             print(f"Error clearing Notepad: {e}")
             return False
 
     def save_notepad(self, filename=None):
-        """Save the current Notepad content to a file"""
         try:
-            # Check if Notepad is already open
             if self.notepad_hwnd is None or not win32gui.IsWindow(self.notepad_hwnd):
                 self.speak("Notepad is not open")
                 return False
 
-            # Bring Notepad to front
             win32gui.ShowWindow(self.notepad_hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(self.notepad_hwnd)
             time.sleep(0.5)
 
-            # Create shell object
             shell = win32com.client.Dispatch("WScript.Shell")
             
-            # Press Ctrl+S to open save dialog
             shell.SendKeys("^s")
-            time.sleep(1)  # Wait for save dialog
+            time.sleep(1)
             
-            # If filename is provided, type it
             if filename:
                 shell.SendKeys(filename)
             
-            # Press Enter to save
             shell.SendKeys("{ENTER}")
             time.sleep(0.5)
             
-            # Handle potential "Replace" dialog
             try:
-                # Find dialog by title
                 replace_dialog = win32gui.FindWindow("#32770", "Confirm Save As")
                 if replace_dialog:
-                    # Press "Yes" to confirm replace
-                    shell.SendKeys("{LEFT}")  # Focus on "Yes" button
+                    shell.SendKeys("{LEFT}")
                     shell.SendKeys("{ENTER}")
             except:
                 pass
@@ -507,34 +398,177 @@ class Liam:
             return False
 
     def process_command(self, user_input):
-        """Process user command and get AI response"""
         if not user_input:
             return
 
-        # Check for direct notepad commands first
-        notepad_keywords = ["notepad", "write", "open notepad"]
-        if any(keyword in user_input.lower() for keyword in notepad_keywords):
-            try:
-                if "write" in user_input.lower() or "write about" in user_input.lower():
-                    self.handle_notepad_ai(user_input, "write")
-                else:
-                    success = self.open_notepad()
-                    if success:
-                        self.speak("I've opened Notepad for you.")
-                    else:
-                        self.speak("I had trouble opening Notepad.")
-                return
-            except Exception as e:
-                print(f"Error handling notepad command: {e}")
-                self.speak("I encountered an error while trying to work with Notepad.")
-                return
+        # Camera control commands
+        camera_on_keywords = ["open camera", "turn on camera", "start camera", "show camera"]
+        camera_off_keywords = ["close camera", "turn off camera", "stop camera", "hide camera"]
+        vision_keywords = ["see what's happening", "see what happened", "describe what you see", 
+                            "access the camera", "what do you see", "look through the camera",
+                            "camera vision", "see what's going on", "what is happening"]
+        read_text_keywords = ["read text", "read what it says", "what does it say", 
+                                "can you read", "read the text", "read the camera",
+                                "make the ai read", "read what you see", "read about it",
+                                "i need you to read this on the camera", "read this in the camera"]
+        narrate_keywords = ["talk about what you see", "narrate what you see", 
+                            "tell me what you see", "describe the camera", 
+                            "make the ai talk", "talk what you see",
+                            "speak what you see", "voice what you see"]
+        stop_narrate_keywords = ["stop talking", "stop narrating", "stop describing", 
+                                    "stop telling me", "be quiet", "silence",
+                                    "stop auto narration", "turn off narration"]
 
-        # Continue with normal AI response for other commands
+        # Notepad commands
+        notepad_keywords = ["notepad", "write", "open notepad"]
+
+        # General exit commands
+        exit_keywords = ["quit", "exit", "goodbye"]
+
+        # Command processing using keyword lists
+        if any(keyword in user_input.lower() for keyword in camera_on_keywords):
+            try:
+                self.speak("Sure! Opening the camera now.")
+                started = self.camera_manager.start_camera()
+                if started:
+                    self.speak("The camera is now on.")
+                else:
+                    self.speak("I couldn't open the camera.")
+            except Exception as e:
+                print(f"Error handling camera command: {e}")
+                self.speak("I encountered an error while trying to open the camera.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in vision_keywords):
+            try:
+                if not self.camera_manager.is_active:
+                    self.speak("I need to turn on the camera first.")
+                    started = self.camera_manager.start_camera()
+                    if not started:
+                        self.speak("I couldn't open the camera.")
+                        return
+                    self.speak("Camera is now on.")
+                
+                if not self.camera_manager.is_ai_vision_enabled:
+                    self.speak("Enabling my vision capabilities.")
+                    self.camera_manager.start_ai_vision(self.client, self.conversation_history)
+                    time.sleep(2)
+                
+                description = self.camera_manager.get_latest_ai_description()
+                if description:
+                    self.speak(f"Through the camera, I can see: {description}")
+                else:
+                    self.speak("I'm looking through the camera, but I'm still processing what I see. Please ask me again in a moment.")
+            except Exception as e:
+                print(f"Error handling AI vision command: {e}")
+                self.speak("I encountered an error while trying to see through the camera.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in read_text_keywords):
+            try:
+                if not self.camera_manager.is_active:
+                    self.speak("I need to turn on the camera first.")
+                    started = self.camera_manager.start_camera()
+                    if not started:
+                        self.speak("I couldn't open the camera.")
+                        return
+                    self.speak("Camera is now on.")
+                
+                if not self.camera_manager.is_ai_vision_enabled:
+                    self.speak("Enabling my text recognition capabilities.")
+                    self.camera_manager.start_ai_vision(
+                        client=self.client, 
+                        conversation_history=self.conversation_history,
+                        speak_callback=self.speak,
+                        auto_narrate=True,
+                        ocr_enabled=True
+                    )
+                    self.speak("I'll now try to read any text I see through the camera.")
+                    time.sleep(2)
+                else:
+                    self.camera_manager.enable_ocr(True)
+                    self.camera_manager.set_auto_narrate(True, self.speak)
+                    self.speak("I'll now try to read any text I see through the camera.")
+                
+                ocr_text = self.camera_manager.get_latest_ocr_text()
+                if ocr_text:
+                    self.speak(f"I can read the following text: {ocr_text}")
+                else:
+                    description = self.camera_manager.get_latest_ai_description()
+                    if description and "text" in description.lower():
+                        self.speak(f"The AI sees some text: {description}")
+                    else:
+                        self.speak("I don't see any clear text at the moment. I'll let you know if I recognize any text.")
+                    
+            except Exception as e:
+                print(f"Error handling text recognition command: {e}")
+                self.speak("I encountered an error while trying to read text from the camera.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in narrate_keywords):
+            try:
+                if not self.camera_manager.is_active:
+                    self.speak("I need to turn on the camera first.")
+                    started = self.camera_manager.start_camera()
+                    if not started:
+                        self.speak("I couldn't open the camera.")
+                        return
+                    self.speak("Camera is now on.")
+                
+                if not self.camera_manager.is_ai_vision_enabled:
+                    self.speak("Enabling my vision capabilities with auto-narration.")
+                    self.camera_manager.start_ai_vision(
+                        client=self.client, 
+                        conversation_history=self.conversation_history,
+                        speak_callback=self.speak,
+                        auto_narrate=True
+                    )
+                    self.speak("I'll now automatically describe what I see through the camera.")
+                else:
+                    self.camera_manager.set_auto_narrate(True, self.speak)
+                    self.speak("I'll now automatically describe what I see through the camera.")
+                    
+            except Exception as e:
+                print(f"Error handling auto-narration command: {e}")
+                self.speak("I encountered an error while trying to set up auto-narration.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in stop_narrate_keywords):
+            try:
+                if self.camera_manager.is_ai_vision_enabled:
+                    self.camera_manager.set_auto_narrate(False)
+                    self.speak("I've turned off the auto-narration. I'll stop describing what I see.")
+                else:
+                    self.speak("I'm not currently narrating anything.")
+            except Exception as e:
+                print(f"Error handling stop narration command: {e}")
+                self.speak("I encountered an error while trying to stop narration.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in camera_off_keywords):
+            try:
+                if self.camera_manager.is_active:
+                    self.camera_manager.stop_camera()
+                    self.speak("I've turned off the camera.")
+                else:
+                    self.speak("The camera is already off.")
+            except Exception as e:
+                print(f"Error handling camera command: {e}")
+                self.speak("I encountered an error while trying to close the camera.")
+            return
+
+        if any(keyword in user_input.lower() for keyword in notepad_keywords):
+            success = self.open_notepad()
+            if success:
+                self.speak("I've opened Notepad for you.")
+            else:
+                self.speak("I had trouble opening Notepad.")
+            return
+
         self.conversation_history.append({"role": "user", "content": user_input})
         
         try:
-            # Play waiting sound before processing (non-blocking)
-            if self.use_elevenlabs:
+            if self.use_elevenlabs and hasattr(self, 'waiting_sounds'):
                 self.waiting_sounds.play_single_waiting_sound()
             
             model_name = "openai/gpt-4o" if os.environ.get("GITHUB_TOKEN") else "gpt-4o"
@@ -650,8 +684,8 @@ class Liam:
 
 def main():
     try:
-        print_banner()  # <-- Show banner at program start
-        print_system_info()  # <-- Show system info at program start
+        print_banner()
+        print_system_info()
         api_key = ensure_api_key()
         if not api_key or api_key.strip() == "":
             print("No valid API key found. Please restart the program.")
