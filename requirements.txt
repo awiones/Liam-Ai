@@ -29,4 +29,3 @@ tqdm>=4.66.1        # Progress bars
 psutil>=5.9.0       # System monitoring
 pipwin>=0.5.2       # Helps with PyAudio installation on Windows
 pytesseract>=0.3.10   # For OCR
-

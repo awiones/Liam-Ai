@@ -19,24 +19,26 @@ class CameraManager:
         self.current_frame: Optional[np.ndarray] = None
         self.frame_lock = threading.Lock()
         self.last_analysis: Optional[Dict[str, Any]] = None
-        self.analysis_interval: float = 1.0  # seconds between analyses
+        self.analysis_interval: float = 1.0
         self.analysis_error_count: int = 0
-        self.max_analysis_errors: int = 5  # Stop analysis after this many consecutive errors
+        self.max_analysis_errors: int = 5
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         self.display_with_analysis: bool = False
         self.ai_vision_enabled: bool = False
         self.ai_vision_thread: Optional[threading.Thread] = None
-        self.ai_vision_interval: float = 3.0  # seconds between sending frames to AI
+        self.ai_vision_interval: float = 3.0
         self.last_ai_frame_time: float = 0
         self.auto_narrate: bool = False
         self.speak_callback = None
         self.last_spoken_description = ""
-        self.narration_interval: float = 6.0  # seconds between narrations
+        self.narration_interval: float = 6.0
         self.last_narration_time: float = 0
+        self.ocr_enabled: bool = False
+        self.last_ocr_text: str = ""
 
     @property
     def is_active(self) -> bool:
-        return self.camera_active
+        return self.camera_active and self.camera is not None and self.camera.isOpened()
 
     @property
     def is_analyzing(self) -> bool:
@@ -49,7 +51,7 @@ class CameraManager:
     def start_camera(self, with_analysis: bool = False):
         if self.camera_active:
             print("DEBUG: Camera already active.")
-            return False
+            return True  # Return True since the camera is already active
 
         print("DEBUG: Attempting to open camera...")
         
@@ -135,7 +137,7 @@ class CameraManager:
         print(f"DEBUG: Auto narration {'enabled' if enabled else 'disabled'}")
         return True
     
-    def start_ai_vision(self, client, conversation_history, speak_callback=None, auto_narrate=False):
+    def start_ai_vision(self, client, conversation_history, speak_callback=None, auto_narrate=False, ocr_enabled=False):
         if self.ai_vision_enabled:
             print("DEBUG: AI vision already active.")
             return False
@@ -148,6 +150,9 @@ class CameraManager:
         self.ai_client = client
         self.conversation_history = conversation_history
         
+        # Enable OCR if requested
+        self.ocr_enabled = ocr_enabled
+        
         self.set_auto_narrate(auto_narrate, speak_callback)
         
         self.ai_vision_thread = threading.Thread(target=self._ai_vision_loop)
@@ -155,6 +160,16 @@ class CameraManager:
         self.ai_vision_thread.start()
         print("DEBUG: AI vision thread started.")
         
+        # Announce AI vision is active if speech callback is provided
+        if speak_callback and not auto_narrate:
+            speak_callback("AI vision is now active. I'll analyze what I see.")
+        
+        return True
+    
+    def enable_ocr(self, enabled: bool):
+        """Enable or disable OCR functionality in AI vision"""
+        self.ocr_enabled = enabled
+        print(f"DEBUG: OCR {'enabled' if enabled else 'disabled'}")
         return True
     
     def stop_ai_vision(self):
@@ -185,7 +200,11 @@ class CameraManager:
                     
                     encoded_image = self._encode_frame_for_ai(frame)
                     
-                    prompt_text = "What do you see in this image from my camera? Please describe what's happening briefly."
+                    # Adjust the prompt based on OCR setting
+                    if self.ocr_enabled:
+                        prompt_text = "What text do you see in this image from my camera? Read any visible text. If no text is visible, briefly describe what you see instead."
+                    else:
+                        prompt_text = "What do you see in this image from my camera? Please describe what's happening briefly."
                     
                     vision_message = {
                         "role": "user", 
@@ -226,6 +245,11 @@ class CameraManager:
                     self.last_analysis['timestamp'] = time.time()
                     self.last_analysis['description'] = vision_description
                     
+                    # Store the OCR text if OCR is enabled
+                    if self.ocr_enabled and any(word in vision_description.lower() for word in ["text", "says", "reads", "written"]):
+                        self.last_ocr_text = vision_description
+                    
+                    # Detect faces
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     faces = self.face_cascade.detectMultiScale(
                         gray,
@@ -235,12 +259,33 @@ class CameraManager:
                     )
                     self.last_analysis['faces'] = faces
                     
+                    # Auto narration logic with improved control
                     if self.auto_narrate and self.speak_callback:
+                        current_time = time.time()
+                        should_speak = False
+                        
+                        # Always speak if it's a new description
                         if vision_description != self.last_spoken_description:
-                            if current_time - self.last_narration_time >= 10:
-                                self.speak_callback(f"I see: {vision_description}")
-                                self.last_spoken_description = vision_description
-                                self.last_narration_time = current_time
+                            should_speak = True
+                        
+                        # Check if enough time has passed since last narration
+                        if current_time - self.last_narration_time >= self.narration_interval:
+                            should_speak = True
+                            
+                        if should_speak:
+                            # Prepare the message for speech
+                            if self.ocr_enabled:
+                                if any(word in vision_description.lower() for word in ["text", "says", "reads", "written"]):
+                                    message = f"I can read: {vision_description}"
+                                else:
+                                    message = f"I don't see any clear text. {vision_description}"
+                            else:
+                                message = f"I see: {vision_description}"
+                                
+                            # Call the speech function
+                            self.speak_callback(message)
+                            self.last_spoken_description = vision_description
+                            self.last_narration_time = current_time
                     
                 except Exception as e:
                     print(f"ERROR in AI vision loop: {str(e)}")
@@ -272,6 +317,34 @@ class CameraManager:
         return encoded_image
     
     def get_latest_ai_description(self):
+        """Get the most recent AI description of what the camera sees"""
         if self.last_analysis and 'description' in self.last_analysis:
             return self.last_analysis['description']
         return None
+        
+    def get_latest_ocr_text(self):
+        """Get the most recent OCR text from the camera"""
+        return self.last_ocr_text
+        
+    def read_vision_aloud(self, speak_callback=None):
+        """Explicitly read the current vision description aloud once"""
+        if not speak_callback and not self.speak_callback:
+            print("ERROR: No speak callback provided to read vision aloud")
+            return False
+            
+        callback = speak_callback or self.speak_callback
+        
+        description = self.get_latest_ai_description()
+        if description:
+            message = f"I see: {description}"
+            callback(message)
+            return True
+        else:
+            callback("I don't have a clear view of anything yet. Please wait a moment.")
+            return False
+            
+    def get_face_count(self):
+        """Return the number of faces currently detected"""
+        if self.last_analysis and 'faces' in self.last_analysis:
+            return len(self.last_analysis['faces'])
+        return 0

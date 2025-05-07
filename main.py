@@ -26,6 +26,7 @@ from elevenlabs import play
 import sounddevice as sd
 import soundfile as sf
 import random  
+from modules.task_manager import TaskManager
 
 from utils import print_banner, print_system_info 
 
@@ -130,6 +131,7 @@ class Liam:
         self.engine.setProperty('volume', 0.9)
         
         self.camera_manager = CameraManager()
+        self.task_manager = TaskManager()
         
         self.system_message = """
         You are Liam, a helpful AI assistant that can control a laptop's peripherals and applications.
@@ -401,7 +403,126 @@ class Liam:
         if not user_input:
             return
 
-        # Camera control commands
+        task_manager_keywords = ["task manager", "list processes", "running processes", "what's running", 
+                                "show processes", "system processes", "check processes", "active processes",
+                                "cpu usage", "memory usage", "process information"]
+                                
+        if any(keyword in user_input.lower() for keyword in task_manager_keywords):
+            try:
+                intelligent_response = self.task_manager.analyze_user_query(user_input)
+                
+                if intelligent_response:
+                    self.speak(intelligent_response)
+                else:
+                    self.speak("Checking the running processes on your system...")
+                    
+                    detail_level = 'normal'
+                    if "detailed" in user_input.lower() or "details" in user_input.lower():
+                        detail_level = 'detailed'
+                    elif "brief" in user_input.lower() or "minimal" in user_input.lower():
+                        detail_level = 'minimal'
+                    
+                    sort_by = 'cpu_percent'
+                    if "memory" in user_input.lower():
+                        sort_by = 'memory_percent'
+                    elif "recent" in user_input.lower() or "new" in user_input.lower():
+                        sort_by = 'created'
+                    
+                    limit = 10
+                    if "all" in user_input.lower():
+                        limit = 30
+                    
+                    description = self.task_manager.describe_processes(
+                        limit=limit, 
+                        sort_by=sort_by, 
+                        detail_level=detail_level,
+                        speak_summary=True
+                    )
+                    
+                    self.speak(description)
+                    full_description = self.task_manager.describe_processes(
+                        limit=limit, 
+                        sort_by=sort_by, 
+                        detail_level=detail_level
+                    )
+                    print(full_description)
+            except Exception as e:
+                print(f"Error handling Task Manager command: {e}")
+                self.speak("I encountered an error while trying to read the system processes.")
+            return
+
+        process_search_keywords = ["find process", "search process", "look for process", "is running", "find application"]
+        if any(keyword in user_input.lower() for keyword in process_search_keywords):
+            try:
+                intelligent_response = self.task_manager.analyze_user_query(user_input)
+                
+                if intelligent_response:
+                    self.speak(intelligent_response)
+                    return
+                    
+                words = user_input.lower().split()
+                search_terms = []
+                
+                for keyword in process_search_keywords:
+                    if keyword in user_input.lower():
+                        index = user_input.lower().find(keyword) + len(keyword)
+                        search_terms = user_input[index:].strip().split()
+                        break
+                
+                if search_terms:
+                    search_term = ' '.join(search_terms)
+                    self.speak(f"Searching for processes matching '{search_term}'...")
+                    
+                    matching_processes = self.task_manager.find_process_by_name(search_term)
+                    
+                    if matching_processes:
+                        if len(matching_processes) == 1:
+                            proc = matching_processes[0]
+                            self.speak(f"I found 1 matching process: {proc.get('name')} (PID: {proc.get('pid')}), "
+                                      f"using {proc.get('cpu_percent', 0):.1f}% CPU and {proc.get('memory_percent', 0):.1f}% memory.")
+                        else:
+                            self.speak(f"I found {len(matching_processes)} matching processes:")
+                            for proc in matching_processes[:5]: 
+                                self.speak(f"- {proc.get('name')} (PID: {proc.get('pid')}), "
+                                         f"using {proc.get('cpu_percent', 0):.1f}% CPU and {proc.get('memory_percent', 0):.1f}% memory.")
+                            
+                            if len(matching_processes) > 5:
+                                self.speak(f"...and {len(matching_processes) - 5} more matching processes.")
+                    else:
+                        self.speak(f"I couldn't find any processes matching '{search_term}'.")
+                else:
+                    self.speak("Please specify a process name to search for.")
+            except Exception as e:
+                print(f"Error handling process search command: {e}")
+                self.speak("I encountered an error while searching for processes.")
+            return
+
+        # System resource usage command
+        resource_keywords = ["system resources", "resource usage", "system usage", "cpu usage", "memory usage",
+                           "system performance", "computer performance", "how is my system doing"]
+        if any(keyword in user_input.lower() for keyword in resource_keywords):
+            try:
+                intelligent_response = self.task_manager.analyze_user_query(user_input)
+                
+                if intelligent_response:
+                    self.speak(intelligent_response)
+                    return
+                    
+                self.speak("Checking your system's resource usage...")
+                
+                resource_info = self.task_manager.get_system_resource_usage()
+                
+                response = (f"Your system is currently using {resource_info['cpu_percent']}% of CPU capacity. "
+                           f"Memory usage is at {resource_info['memory']['percent']}%, with "
+                           f"{resource_info['memory']['available'] / (1024 * 1024 * 1024):.1f} GB available. "
+                           f"Your system disk is {resource_info['disk']['percent']}% full.")
+                
+                self.speak(response)
+            except Exception as e:
+                print(f"Error handling resource usage command: {e}")
+                self.speak("I encountered an error while checking system resources.")
+            return
+            
         camera_on_keywords = ["open camera", "turn on camera", "start camera", "show camera"]
         camera_off_keywords = ["close camera", "turn off camera", "stop camera", "hide camera"]
         vision_keywords = ["see what's happening", "see what happened", "describe what you see", 
@@ -419,13 +540,10 @@ class Liam:
                                     "stop telling me", "be quiet", "silence",
                                     "stop auto narration", "turn off narration"]
 
-        # Notepad commands
         notepad_keywords = ["notepad", "write", "open notepad"]
 
-        # General exit commands
         exit_keywords = ["quit", "exit", "goodbye"]
 
-        # Command processing using keyword lists
         if any(keyword in user_input.lower() for keyword in camera_on_keywords):
             try:
                 self.speak("Sure! Opening the camera now.")
@@ -441,7 +559,9 @@ class Liam:
 
         if any(keyword in user_input.lower() for keyword in vision_keywords):
             try:
-                if not self.camera_manager.is_active:
+                if self.camera_manager.is_active:
+                    self.speak("The camera is already on. Let me check what I can see.")
+                else:
                     self.speak("I need to turn on the camera first.")
                     started = self.camera_manager.start_camera()
                     if not started:
@@ -462,6 +582,17 @@ class Liam:
             except Exception as e:
                 print(f"Error handling AI vision command: {e}")
                 self.speak("I encountered an error while trying to see through the camera.")
+            return
+
+        if "check camera" in user_input.lower() or "camera status" in user_input.lower():
+            try:
+                if self.camera_manager.is_active:
+                    self.speak("The camera is currently on.")
+                else:
+                    self.speak("The camera is currently off.")
+            except Exception as e:
+                print(f"Error checking camera status: {e}")
+                self.speak("I encountered an error while checking the camera's status.")
             return
 
         if any(keyword in user_input.lower() for keyword in read_text_keywords):
@@ -563,6 +694,43 @@ class Liam:
                 self.speak("I've opened Notepad for you.")
             else:
                 self.speak("I had trouble opening Notepad.")
+            return
+
+        if "camera" in user_input.lower() or "see" in user_input.lower():
+            try:
+                if not self.camera_manager.is_active:
+                    self.speak("The camera is not active. Let me turn it on for you.")
+                    started = self.camera_manager.start_camera()
+                    if not started:
+                        self.speak("I couldn't open the camera.")
+                        return
+                    self.speak("The camera is now on.")
+                
+                if not self.camera_manager.is_ai_vision_enabled:
+                    self.speak("Activating AI Vision to analyze the camera feed.")
+                    self.camera_manager.start_ai_vision(self.client, self.conversation_history)
+                    time.sleep(2)
+                
+                description = self.camera_manager.get_latest_ai_description()
+                if description:
+                    self.speak(f"Here's what I see: {description}")
+                else:
+                    self.speak("I'm still processing the camera feed. Please ask me again in a moment.")
+            except Exception as e:
+                print(f"Error handling camera or vision command: {e}")
+                self.speak("I encountered an error while trying to use the camera or AI Vision.")
+            return
+
+        if "what do you see" in user_input.lower() or "describe" in user_input.lower():
+            try:
+                description = self.camera_manager.get_latest_ai_description()
+                if description:
+                    self.speak(f"Here's what I see: {description}")
+                else:
+                    self.speak("I'm still processing the camera feed. Please ask me again in a moment.")
+            except Exception as e:
+                print(f"Error handling description request: {e}")
+                self.speak("I encountered an error while trying to describe the camera feed.")
             return
 
         self.conversation_history.append({"role": "user", "content": user_input})
