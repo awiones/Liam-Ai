@@ -29,15 +29,16 @@ Liam AI integrates several technologies:
 
 ## Key Capabilities
 
-| Feature                       | Description                                                                                        |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Voice Command Recognition** | Understands and processes natural language instructions                                            |
-| **System Control**            | Manages Notepad and can open/close other applications (browser, terminal)                          |
-| **Notepad Automation**        | Writes, appends, and clears content in Notepad using robust fallback logic                         |
-| **File Operations**           | Creates text files and writes dictated content                                                     |
-| **Speech Synthesis**          | Speaks responses using ElevenLabs (if available) or Microsoft TTS                                  |
-| **Waiting Feedback**          | Plays short sounds while processing to indicate activity                                           |
-| **AI Vision**                 | Describes the camera view in real-time, identifies objects, and reads text using OCR (if enabled). |
+| Feature                       | Description                                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Voice Command Recognition** | Understands and processes natural language instructions                                              |
+| **System Control**            | Manages Notepad and can open/close other applications (browser, terminal)                            |
+| **Notepad Automation**        | Writes, appends, and clears content in Notepad using robust fallback logic                           |
+| **File Operations**           | Creates text files and writes dictated content                                                       |
+| **Speech Synthesis**          | Speaks responses using ElevenLabs (if available) or Microsoft TTS                                    |
+| **Waiting Feedback**          | Plays short sounds while processing to indicate activity                                             |
+| **AI Vision**                 | Describes the camera view in real-time, identifies objects, and reads text using OCR (if enabled).   |
+| **Task Manager**              | Analyzes and describes running processes, system resource usage, and can find or terminate processes |
 
 ## Roadmap: How Liam AI Works
 
@@ -47,53 +48,55 @@ flowchart LR
         direction TB
         A["🎤 User Voice Input"] -->|Voice Command| B["🔍 Speech Recognition"]
     end
-    
+
     subgraph Processing ["Command Processing"]
         direction TB
         B -->|Text Output| C["⚙️ Intent Analysis"]
         C --> D{"🔄 Command\nClassification"}
     end
-    
+
     subgraph Actions ["System Actions"]
         direction TB
         D -->|Notepad| E["📝 Notepad Operations\n(Write/Edit/Clear)"]
         D -->|Camera| F["📷 Camera Control"]
         D -->|Vision| G["👁️ AI Vision Analysis"]
         D -->|Files| H["💾 File Operations"]
+        D -->|TaskMgr| TM["🗂️ Task Manager\n(Process/Resource Analysis)"]
         D -->|Queries| I["🧠 AI Response Generation"]
     end
-    
+
     subgraph Output ["System Response"]
         direction TB
         J["🔄 System Integration"] --> K["📤 Response Preparation"]
         K -->|Audio| L["🔊 Voice Response"]
         K -->|Visual| M["📊 Display Output"]
     end
-    
+
     E --> J
     F --> J
     G --> J
     H --> J
+    TM --> J
     I --> J
-    
+
     Input --> Processing
     Processing --> Actions
     Actions --> Output
-    
+
     classDef input fill:#c4e3ff,stroke:#0066cc,stroke-width:2px,color:#003366,font-weight:bold
     classDef process fill:#ffe6cc,stroke:#ff9900,stroke-width:2px,color:#804000,font-weight:bold
     classDef decision fill:#fff2cc,stroke:#ffcc00,stroke-width:2px,color:#806600,font-weight:bold,border-radius:12px
     classDef action fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#1e4d2a,font-weight:bold
     classDef output fill:#e6ccff,stroke:#9673a6,stroke-width:2px,color:#4d0080,font-weight:bold
-    
+
     class A,B input
     class C process
     class D decision
-    class E,F,G,H,I action
+    class E,F,G,H,TM,I action
     class J,K,L,M output
-    
+
     linkStyle default stroke:#666,stroke-width:2px,fill:none
-    
+
     style Input fill:#f5faff,stroke:#0066cc,stroke-width:1px,color:#0066cc,stroke-dasharray: 5 5
     style Processing fill:#fff8f0,stroke:#ff9900,stroke-width:1px,color:#ff9900,stroke-dasharray: 5 5
     style Actions fill:#f0fff0,stroke:#82b366,stroke-width:1px,color:#82b366,stroke-dasharray: 5 5
