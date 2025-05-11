@@ -133,7 +133,7 @@ flowchart LR
 
 ## Open Source Collaboration
 
-Liam AI is developed under the GNU General Public License v3.0, inviting community participation and contribution. The project welcomes enhancements, bug fixes, and feature additions through the standard GitHub workflow.
+Liam AI is developed under the GNU General Public License v3.0, inviting community participation and contribution. 
 
 ## Contact & Resources
 
