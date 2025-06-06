@@ -49,39 +49,72 @@ class CameraManager:
         return self.ai_vision_enabled
 
     def start_camera(self, with_analysis: bool = False):
+        """Start camera with improved error handling and validation."""
         if self.camera_active:
             print("DEBUG: Camera already active.")
-            return True  # Return True since the camera is already active
+            return True
 
         print("DEBUG: Attempting to open camera...")
         
+        # Clean up any existing camera instance
         if self.camera:
-            self.camera.release()
+            try:
+                self.camera.release()
+            except Exception as e:
+                print(f"DEBUG: Error releasing previous camera: {e}")
             
         camera_opened = False
-        for camera_index in range(3):
+        last_error = None
+        
+        # Try multiple camera indices with better error handling
+        for camera_index in range(5):  # Increased range for more camera options
             try:
+                print(f"DEBUG: Trying camera index {camera_index}...")
                 self.camera = cv2.VideoCapture(camera_index)
+                
                 if self.camera.isOpened():
-                    camera_opened = True
-                    print(f"DEBUG: Successfully opened camera at index {camera_index}")
-                    break
+                    # Test if we can actually read from the camera
+                    ret, frame = self.camera.read()
+                    if ret and frame is not None:
+                        camera_opened = True
+                        print(f"DEBUG: Successfully opened and tested camera at index {camera_index}")
+                        break
+                    else:
+                        print(f"DEBUG: Camera {camera_index} opened but cannot read frames")
+                        self.camera.release()
                 else:
+                    print(f"DEBUG: Camera {camera_index} failed to open")
                     self.camera.release()
+                    
             except Exception as e:
-                print(f"DEBUG: Failed to open camera at index {camera_index}: {str(e)}")
+                last_error = e
+                print(f"DEBUG: Exception with camera {camera_index}: {str(e)}")
+                if self.camera:
+                    try:
+                        self.camera.release()
+                    except:
+                        pass
                 
         self.camera_active = camera_opened
         
         if not camera_opened:
-            print("ERROR: Could not open any camera.")
+            error_msg = f"Could not open any camera. Last error: {last_error}" if last_error else "No cameras found or accessible."
+            print(f"ERROR: {error_msg}")
             return False
         
+        # Set camera properties for better performance
+        try:
+            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.camera.set(cv2.CAP_PROP_FPS, 30)
+        except Exception as e:
+            print(f"DEBUG: Could not set camera properties: {e}")
+        
         self.display_with_analysis = with_analysis
-        self.camera_thread = threading.Thread(target=self._camera_loop)
+        self.camera_thread = threading.Thread(target=self._camera_loop, name="CameraThread")
         self.camera_thread.daemon = True
         self.camera_thread.start()
-        print("DEBUG: Camera thread started.")
+        print("DEBUG: Camera thread started successfully.")
         
         return True
 

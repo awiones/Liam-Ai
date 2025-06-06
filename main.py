@@ -8,10 +8,6 @@ import pyttsx3
 import base64
 import subprocess
 import platform
-import win32gui
-import win32con
-import win32api
-import win32com.client
 import re
 from io import BytesIO
 from PIL import Image
@@ -19,7 +15,6 @@ import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
 from modules import CameraManager
-from modules.write.notepad import handle_notepad_ai, ensure_notepad_window, write_content_to_notepad, safe_send_keys
 from modules.waiting_sounds import WaitingSounds 
 from elevenlabs.client import ElevenLabs
 from elevenlabs import play
@@ -28,47 +23,101 @@ import soundfile as sf
 import random  
 from modules.task_manager import TaskManager
 
-from utils import print_banner, print_system_info 
+from utils import print_banner, print_system_info, setup_logging
+from config import config
+from exceptions import *
+
+# Platform-specific imports
+if platform.system() == "Windows":
+    try:
+        import win32gui
+        import win32con
+        import win32api
+        import win32com.client
+        from modules.write.notepad import handle_notepad_ai, ensure_notepad_window, write_content_to_notepad, safe_send_keys
+        WINDOWS_AVAILABLE = True
+    except ImportError as e:
+        print(f"Warning: Windows-specific modules not available: {e}")
+        WINDOWS_AVAILABLE = False
+else:
+    WINDOWS_AVAILABLE = False
 
 load_dotenv()
 
+# Set up logging
+logger = setup_logging(
+    log_level=config.get("system", "log_level", "INFO"),
+    log_file="liam_ai.log" if config.get("system", "enable_logging", False) else None
+)
+
 def ensure_api_key():
+    """Ensure a valid API key is available, with improved error handling and validation."""
     github_token = os.environ.get("GITHUB_TOKEN", "").strip()
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
     
-    if github_token:
+    # Return existing valid keys
+    if github_token and len(github_token) > 10:  # Basic validation
         return github_token
-    if openai_key:
+    if openai_key and len(openai_key) > 10:  # Basic validation
         return openai_key
         
-    print("\nNo valid API key found in .env file.")
-    print("Please enter your API key:")
+    print("\n" + "="*50)
+    print("🔑 API KEY CONFIGURATION")
+    print("="*50)
+    print("No valid API key found in .env file.")
+    print("\nSupported providers:")
+    print("  1. GitHub Copilot (recommended for free tier)")
+    print("  2. OpenAI (requires paid account)")
+    print("\nPlease enter your API key:")
+    
     user_key = input("API Key: ").strip()
-    if not user_key:
-        print("No API key provided. Exiting.")
+    if not user_key or len(user_key) < 10:
+        print("❌ Invalid API key provided. Key must be at least 10 characters.")
         exit(1)
         
-    print("Is this a GitHub Copilot key or OpenAI key?")
-    print("Type 'g' for GitHub Copilot, 'o' for OpenAI:")
-    key_type = input("Key type [g/o]: ").strip().lower()
+    print("\nWhich provider is this key for?")
+    print("  [g] GitHub Copilot")
+    print("  [o] OpenAI")
+    key_type = input("Provider [g/o]: ").strip().lower()
     
     if key_type not in ['g', 'o']:
-        print("Invalid key type. Please restart and choose 'g' or 'o'.")
+        print("❌ Invalid provider. Please restart and choose 'g' or 'o'.")
         exit(1)
         
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
-    with open(env_path, 'w') as f:
-        if key_type == "g":
-            f.write("GITHUB_TOKEN={}\n".format(user_key))
-        else:
-            f.write("OPENAI_API_KEY={}\n".format(user_key))
+    try:
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        
+        # Read existing .env content to preserve other variables
+        existing_content = ""
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+                # Filter out existing API keys
+                existing_content = ''.join([
+                    line for line in lines 
+                    if not line.startswith(('GITHUB_TOKEN=', 'OPENAI_API_KEY='))
+                ])
+        
+        with open(env_path, 'w') as f:
+            f.write(existing_content)
+            if key_type == "g":
+                f.write(f"GITHUB_TOKEN={user_key}\n")
+                print("✅ GitHub Copilot key saved.")
+            else:
+                f.write(f"OPENAI_API_KEY={user_key}\n")
+                print("✅ OpenAI key saved.")
 
-        elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
-        if elevenlabs_key:
-            f.write("ELEVENLABS_API_KEY={}\n".format(elevenlabs_key))
+            # Preserve ElevenLabs key if it exists
+            elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
+            if elevenlabs_key and "ELEVENLABS_API_KEY=" not in existing_content:
+                f.write(f"ELEVENLABS_API_KEY={elevenlabs_key}\n")
+                
+    except Exception as e:
+        print(f"❌ Error saving API key: {e}")
+        exit(1)
             
-    print("\nAPI key saved to .env file.")
-    print("Please restart the program to use the new key.")
+    print("\n✅ Configuration saved successfully!")
+    print("🔄 Please restart the program to use the new key.")
     exit(0)
 
 class Liam:
@@ -307,6 +356,10 @@ class Liam:
                 return None
 
     def open_notepad(self):
+        if not WINDOWS_AVAILABLE:
+            self.speak("Notepad functionality is only available on Windows.")
+            return False
+            
         try:
             if self.use_elevenlabs and hasattr(self, 'waiting_sounds'):
                 self.waiting_sounds.play_single_waiting_sound()
@@ -326,6 +379,7 @@ class Liam:
 
         except Exception as e:
             print(f"Error opening Notepad: {e}")
+            self.speak("I encountered an error while trying to open Notepad.")
             return False
 
     def write_to_notepad(self, text):
@@ -400,8 +454,19 @@ class Liam:
             return False
 
     def process_command(self, user_input):
-        if not user_input:
+        """Process user commands with improved validation and security."""
+        if not user_input or not isinstance(user_input, str):
             return
+            
+        # Sanitize input
+        user_input = user_input.strip()
+        if len(user_input) > 1000:  # Prevent extremely long inputs
+            self.speak("Your command is too long. Please try a shorter command.")
+            return
+            
+        # Log the command for debugging (without sensitive data)
+        safe_input = user_input[:100] + "..." if len(user_input) > 100 else user_input
+        print(f"Processing command: {safe_input}")
 
         task_manager_keywords = ["task manager", "list processes", "running processes", "what's running", 
                                 "show processes", "system processes", "check processes", "active processes",

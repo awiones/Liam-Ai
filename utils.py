@@ -2,13 +2,57 @@ import os
 import sys
 import platform
 import time
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 # Version information
-LIAM_VERSION = "2.1.0"
-LIAM_BUILD_DATE = "2025-05-07"
+LIAM_VERSION = "2.1.1" 
+LIAM_BUILD_DATE = "2025-06-06" 
 LIAM_AUTHOR = "Awiones"
+
+# Configure logging
+def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
+    """
+    Set up logging configuration for Liam AI.
+    
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional log file path
+        
+    Returns:
+        Configured logger instance
+    """
+    logger = logging.getLogger("LiamAI")
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Clear existing handlers
+    logger.handlers.clear()
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # File handler (optional)
+    if log_file:
+        try:
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except Exception as e:
+            logger.warning(f"Could not create log file {log_file}: {e}")
+    
+    return logger
+
+# Global logger instance
+logger = setup_logging()
 
 # ASCII Art Banner
 LIAM_ASCII_BANNER = r"""                                                                                                                                                                                                    

@@ -5,10 +5,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-2.1.1-blue" alt="Version"/>
   <img src="https://img.shields.io/github/license/awiones/Liam-Ai" alt="License"/>
   <img src="https://img.shields.io/github/stars/awiones/Liam-Ai" alt="Stars"/>
   <img src="https://img.shields.io/github/forks/awiones/Liam-Ai" alt="Forks"/>
+  <img src="https://img.shields.io/badge/python-3.8+-green" alt="Python Version"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="Platform"/>
 </p>
 
 ## Executive Summary
@@ -111,19 +113,96 @@ flowchart LR
 - Windows OS (Notepad automation is Windows-specific)
 - Microphone and speakers
 
-## Implementation Process
+## Quick Start
 
-1. **Installation**:  
-   Install dependencies with `pip install -r requirements.txt`.  
-   For Windows, install PyAudio with:  
-   `pip install pipwin && pipwin install pyaudio`
-2. **Configuration**:  
-   Place your API keys in a `.env` file or enter them at first launch.
-   - `GITHUB_TOKEN` for Copilot
-   - `OPENAI_API_KEY` for OpenAI
-   - `ELEVENLABS_API_KEY` for ElevenLabs (optional)
-3. **Execution**:  
-   Run `python main.py` to start. Liam will greet you and listen for commands.
+### Automated Setup (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/awiones/Liam-Ai.git
+cd Liam-Ai
+
+# Run the setup script
+python setup.py
+
+# Edit the .env file with your API keys
+# Then start Liam AI
+python main.py
+```
+
+### Manual Installation
+
+1. **Prerequisites**:
+   - Python 3.8 or higher
+   - Microphone and speakers
+   - Camera (optional, for AI vision features)
+
+2. **Installation**:
+   ```bash
+   # Install dependencies
+   pip install -r requirements.txt
+   
+   # For Windows users (PyAudio installation)
+   pip install pipwin
+   pipwin install pyaudio
+   ```
+
+3. **Configuration**:
+   Create a `.env` file with your API keys:
+   ```env
+   # Choose one of these AI providers
+   GITHUB_TOKEN=your_github_copilot_token    # Recommended
+   OPENAI_API_KEY=your_openai_api_key        # Alternative
+   
+   # Optional: Premium voice (ElevenLabs)
+   ELEVENLABS_API_KEY=your_elevenlabs_key
+   ```
+
+4. **Launch**:
+   ```bash
+   python main.py
+   ```
+
+## Configuration
+
+Liam AI uses a configuration system that allows you to customize behavior:
+
+- **Audio Settings**: Voice rate, volume, TTS provider
+- **Camera Settings**: Resolution, AI vision intervals
+- **AI Settings**: Model selection, token limits
+- **Security Settings**: Input validation, logging
+
+Configuration is automatically created on first run and can be modified in `liam_config.json`.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **PyAudio Installation Error (Windows)**:
+   ```bash
+   pip install pipwin
+   pipwin install pyaudio
+   ```
+
+2. **Camera Not Working**:
+   - Check camera permissions
+   - Ensure no other applications are using the camera
+   - Try different camera indices in the configuration
+
+3. **Speech Recognition Issues**:
+   - Check microphone permissions
+   - Ensure microphone is not muted
+   - Test with different microphones
+
+4. **API Key Errors**:
+   - Verify API key format and validity
+   - Check internet connection
+   - Ensure sufficient API credits/quota
+
+### Platform-Specific Notes
+
+- **Windows**: Full feature support including Notepad automation
+- **Linux/macOS**: Core features available, limited system integration
+- **Notepad Features**: Only available on Windows systems
 
 ## Practical Applications
 
