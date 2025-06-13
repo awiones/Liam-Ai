@@ -198,12 +198,6 @@ Configuration is automatically created on first run and can be modified in `liam
    - Check internet connection
    - Ensure sufficient API credits/quota
 
-### Platform-Specific Notes
-
-- **Windows**: Full feature support including Notepad automation
-- **Linux/macOS**: Core features available, limited system integration
-- **Notepad Features**: Only available on Windows systems
-
 ## Practical Applications
 
 - **Accessibility**: Enables hands-free computer use, especially for users with mobility challenges.
